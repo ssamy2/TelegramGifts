@@ -31,3 +31,6 @@ wheels/
 
 # Local Data Repo (do not push to library repo)
 TG_Photos_repo/
+
+# Local tools
+tools/
