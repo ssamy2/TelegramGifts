@@ -17,9 +17,12 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 keywords = [
-    "telegram", "gifts", "api", "sdk", "nft", 
-    "getgems", "fragment", "tgmrkt", "prices",
-    "telegram-gifts", "no-api-key", "python"
+    "telegram", "telegram-gifts", "telegram-nft", "telegram-bot", 
+    "python", "python-sdk", "nft", "fragment", 
+    "upgraded-and-not-upgraded-telegram-nft", "getgems", "tgmrkt", 
+    "gift-prices", "nft-marketplace", "api-wrapper", "sdk", 
+    "no-auth", "no-token", "no-api-key", "ton", "telegram-stickers", 
+    "portal-prices"
 ]
 dependencies = [
     "requests",
