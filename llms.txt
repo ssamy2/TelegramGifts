@@ -1,0 +1,45 @@
+# TelegramGifts - LLM Guide
+
+TelegramGifts is an offline-first Python library for fetching Telegram Gifts metadata, prices, models, and custom emojis without needing a Telegram bot token.
+
+## Initialization
+`TelegramGifts(repo_url: str = "...", cache_dir: Optional[str] = None, ttl_seconds: int = 600, enable_cache: bool = True)`
+
+## Core Public Methods
+
+- `get_gift(identifier: str) -> Optional[dict]`
+  Returns a comprehensive dictionary with `id`, `full_name`, `type`, `supply`, `prices` (dict), `links` (dict of URLs), and `custom_emoji_id`. Identifier can be ID or short_name.
+
+- `get_model_details(identifier: str, model_name: Optional[str] = None) -> Union[list, dict, None]`
+  Returns a dict (or list of dicts) with config details for upgraded gift models, including `price_ton`, `links`, and `custom_emoji_id`.
+
+- `get_upgraded_gifts() -> List[GiftDetail]` / `get_unupgraded_gifts() -> List[GiftDetail]` / `get_regular_gifts() -> List[RegularGift]`
+  Returns lists of dataclass objects representing different categories of gifts.
+
+- `get_upgraded_price(identifier: str, source: str = "tgmrkt") -> Optional[float]`
+  Returns price for a gift from sources: 'floor', 'portal', 'getgems', 'tgmrkt'.
+
+- `get_unupgraded_price(identifier: str) -> Optional[float]`
+  Returns floor price of an unupgraded gift.
+
+- `get_attribute_price(identifier: str, attribute_type: Optional[str] = None, item_name: Optional[str] = None) -> Union[dict, float, None]`
+  Returns prices for 'models', 'backdrops', or 'symbols' of upgraded gifts.
+
+## Image and Resource Methods
+
+- `get_image_url(short_name: str, ext: str = "webp") -> str` / `get_image_url_by_id(gift_id: str, ext: str = "webp") -> str`
+  Returns raw GitHub URL for image assets.
+
+- `get_model_image_url(short_name: str, model_short_name: str, ext: str = "webp") -> str`
+  Returns URL for specific model variant.
+
+- `download_image(short_name: str, ext: str = "webp") -> str` / `download_image_by_id(gift_id: str, ext: str = "webp") -> str` / `download_model_image(...)`
+  Downloads asset, caches locally, and returns absolute file path.
+
+## Error Handling
+Exceptions are found in `TelegramGifts.exceptions`:
+- `TelegramGiftsError` (Base)
+- `GiftNotFoundError`
+- `GitHubFetchError`
+- `CacheError`
+- `InvalidExtensionError`
