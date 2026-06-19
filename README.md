@@ -94,6 +94,10 @@ Contributions are welcome! Please feel free to submit a Pull Request to the repo
 ## License
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
+## Documentation 📚
+
+For detailed information about all available methods, error handling, and JSON response structures, please refer to our **[Full API Reference](https://github.com/ssamy2/TelegramGifts/tree/main/docs)**.
+
 ## Author & Contact
 - **Developer:** Samy Mahmoud
 - **PyPI Username:** [Sami3d](https://pypi.org/user/Sami3d/)
