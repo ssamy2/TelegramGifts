@@ -1,7 +1,8 @@
-from typing import List, Optional, Dict, Union, Any
+from typing import List, Optional, Dict, Union, Any, Tuple
 from .cache import CacheManager
 from .types import GiftDetail, RegularGift
 from .exceptions import InvalidExtensionError, GiftNotFoundError
+from .identity import DEFAULT_ALIAS_MANIFEST, resolve_alias
 
 class TelegramGifts:
     def __init__(
@@ -9,12 +10,36 @@ class TelegramGifts:
         repo_url: str = "https://raw.githubusercontent.com/ssamy2/TelegramGiftsAssests/main",
         cache_dir: Optional[str] = None,
         ttl_seconds: int = 600,
-        enable_cache: bool = True
+        enable_cache: bool = True,
+        cache_mode: str = "git",
+        asset_mode: str = "repo",
+        git_pull_interval: Optional[int] = None,
+        asset_min_interval_seconds: float = 0.2,
+        asset_repo_threshold: int = 10,
     ):
         self.BASE_RAW_URL = repo_url.rstrip('/')
-        self.cache = CacheManager(cache_dir, ttl_seconds, enable_cache)
+        self.cache = CacheManager(
+            cache_dir,
+            ttl_seconds,
+            enable_cache,
+            repo_url=self.BASE_RAW_URL,
+            cache_mode=cache_mode,
+            asset_mode=asset_mode,
+            git_pull_interval=git_pull_interval,
+            asset_min_interval_seconds=asset_min_interval_seconds,
+            asset_repo_threshold=asset_repo_threshold,
+        )
         self._gifts_details: Optional[dict] = None
         self._ss_data: Optional[list] = None
+        self._aliases: Optional[dict] = None
+        self._upgraded_gifts: Optional[List[GiftDetail]] = None
+        self._unupgraded_gifts: Optional[List[GiftDetail]] = None
+        self._regular_gifts: Optional[List[RegularGift]] = None
+        self._detail_by_id: Dict[str, GiftDetail] = {}
+        self._detail_by_text: Dict[str, GiftDetail] = {}
+        self._regular_by_id: Dict[str, RegularGift] = {}
+        self._regular_by_text: Dict[str, RegularGift] = {}
+        self._detail_type_by_id: Dict[str, str] = {}
 
     def _load_data(self):
         """Loads and caches both main data files."""
@@ -30,6 +55,57 @@ class TelegramGifts:
                 "ss.json"
             )
 
+        if self._aliases is None:
+            try:
+                aliases = self.cache.fetch_github_file(
+                    f"{self.BASE_RAW_URL}/{DEFAULT_ALIAS_MANIFEST}",
+                    DEFAULT_ALIAS_MANIFEST,
+                )
+                self._aliases = aliases if isinstance(aliases, dict) else {}
+            except Exception:
+                self._aliases = {}
+
+        if self._upgraded_gifts is None:
+            self._build_indexes()
+
+    def _normalize_key(self, value: Any) -> str:
+        return str(value).strip().lower()
+
+    def _build_indexes(self):
+        upgraded_data = self._gifts_details.get("upgraded", []) if isinstance(self._gifts_details, dict) else []
+        unupgraded_data = self._gifts_details.get("unupgraded", []) if isinstance(self._gifts_details, dict) else []
+        regular_data = self._ss_data if isinstance(self._ss_data, list) else []
+
+        self._upgraded_gifts = [GiftDetail.from_dict(g) for g in upgraded_data]
+        self._unupgraded_gifts = [GiftDetail.from_dict(g) for g in unupgraded_data]
+        self._regular_gifts = [RegularGift.from_dict(g) for g in regular_data]
+        self._detail_by_id = {}
+        self._detail_by_text = {}
+        self._regular_by_id = {}
+        self._regular_by_text = {}
+        self._detail_type_by_id = {}
+
+        for gift_type, gifts in (
+            ("UPGRADED", self._upgraded_gifts),
+            ("UNUPGRADED", self._unupgraded_gifts),
+        ):
+            for gift in gifts:
+                if gift.regular_id:
+                    self._detail_by_id[str(gift.regular_id)] = gift
+                    self._detail_type_by_id[str(gift.regular_id)] = gift_type
+                for key in (gift.short_name, gift.full_name):
+                    normalized = self._normalize_key(key)
+                    if normalized:
+                        self._detail_by_text[normalized] = gift
+
+        for gift in self._regular_gifts:
+            if gift.id:
+                self._regular_by_id[str(gift.id)] = gift
+            for key in (gift.short_name, gift.full_name):
+                normalized = self._normalize_key(key)
+                if normalized:
+                    self._regular_by_text[normalized] = gift
+
     @property
     def raw_gifts_details(self) -> dict:
         self._load_data()
@@ -40,40 +116,55 @@ class TelegramGifts:
         self._load_data()
         return self._ss_data or []
 
+    @property
+    def raw_aliases(self) -> dict:
+        self._load_data()
+        return self._aliases or {}
+
     # --- Lists ---
     def get_upgraded_gifts(self) -> List[GiftDetail]:
-        data = self.raw_gifts_details.get("upgraded", [])
-        return [GiftDetail.from_dict(g) for g in data]
+        self._load_data()
+        return list(self._upgraded_gifts or [])
 
     def get_unupgraded_gifts(self) -> List[GiftDetail]:
-        data = self.raw_gifts_details.get("unupgraded", [])
-        return [GiftDetail.from_dict(g) for g in data]
+        self._load_data()
+        return list(self._unupgraded_gifts or [])
 
     def get_regular_gifts(self) -> List[RegularGift]:
-        return [RegularGift.from_dict(g) for g in self.raw_ss_data]
+        self._load_data()
+        return list(self._regular_gifts or [])
         
     def get_all_gifts_details(self) -> List[GiftDetail]:
         return self.get_upgraded_gifts() + self.get_unupgraded_gifts()
 
     # --- Single Gift Properties ---
-    def _find_raw_gift_data(self, identifier: str) -> tuple[Optional[RegularGift], Optional[GiftDetail]]:
+    def _candidate_identifiers(self, identifier: str) -> List[str]:
         if not identifier:
+            return []
+
+        original = str(identifier)
+        aliased = resolve_alias(original, self.raw_aliases)
+        candidates = [aliased, original]
+        return list(dict.fromkeys(candidates))
+
+    def _find_raw_gift_data(self, identifier: str) -> Tuple[Optional[RegularGift], Optional[GiftDetail]]:
+        candidates = self._candidate_identifiers(identifier)
+        if not candidates:
             return None, None
-        
-        identifier_str = str(identifier).lower()
+
         regular_gift = None
         detail_gift = None
-        
-        # Search regular gifts
-        for g in self.get_regular_gifts():
-            if str(g.id) == str(identifier) or g.short_name.lower() == identifier_str or g.full_name.lower() == identifier_str:
-                regular_gift = g
+
+        for candidate in candidates:
+            identifier_str = self._normalize_key(candidate)
+            detail_gift = self._detail_by_id.get(str(candidate)) or self._detail_by_text.get(identifier_str)
+            if detail_gift:
                 break
-                
-        # Search details
-        for g in self.get_all_gifts_details():
-            if str(g.regular_id) == str(identifier) or g.short_name.lower() == identifier_str or g.full_name.lower() == identifier_str:
-                detail_gift = g
+
+        for candidate in candidates:
+            identifier_str = self._normalize_key(candidate)
+            regular_gift = self._regular_by_id.get(str(candidate)) or self._regular_by_text.get(identifier_str)
+            if regular_gift:
                 break
                 
         return regular_gift, detail_gift
@@ -93,13 +184,7 @@ class TelegramGifts:
         # Determine if it's in upgraded or unupgraded list
         gift_type = "UNKNOWN"
         if detail:
-            # Check if it's upgraded or unupgraded
-            for g in self.get_upgraded_gifts():
-                if str(g.regular_id) == str(gift_id):
-                    gift_type = "UPGRADED"
-                    break
-            if gift_type == "UNKNOWN":
-                gift_type = "UNUPGRADED"
+            gift_type = self._detail_type_by_id.get(str(gift_id), "UNUPGRADED")
         elif regular:
             gift_type = "REGULAR"
 
@@ -269,16 +354,18 @@ class TelegramGifts:
             
         model_name_lower = model_name.lower().replace(" ", "_")
         for model in config_data:
-            if model.get("name", "").lower() == model_name_lower:
+            if model.get("name", "").lower().replace(" ", "_") == model_name_lower:
                 return _enrich_model(model)
                 
         return None
 
     def _resolve_upgraded_short_name(self, identifier: str) -> Optional[str]:
         """Helper to resolve an ID or full name to a short_name for upgraded gifts"""
-        for g in self.get_upgraded_gifts():
-            if str(identifier) in (g.regular_id, g.short_name, g.full_name):
-                return g.short_name
+        for candidate in self._candidate_identifiers(identifier):
+            identifier_str = self._normalize_key(candidate)
+            gift = self._detail_by_id.get(str(candidate)) or self._detail_by_text.get(identifier_str)
+            if gift and self._detail_type_by_id.get(str(gift.regular_id)) == "UPGRADED":
+                return gift.short_name
         return None
 
     def get_attribute_price(

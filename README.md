@@ -10,7 +10,7 @@
 ## Why this library?
 - **No API Key Needed:** Fetch comprehensive gift data without authenticating to the Telegram API.
 - **Continuously Auto-Updated:** Data is served directly from a GitHub-hosted, automatically synchronized dataset.
-- **Smart Local Caching:** Powered by ETag-based caching to ensure lightning-fast responses and zero rate limits.
+- **Full Local Cache:** On first run, the assets repository is cloned locally so JSON, WebP, and TGS files can be reused from disk.
 - **Unified & Simple API:** Look up models, prices, custom emojis, and backdrops with a single, intuitive interface.
 
 ## Installation
@@ -24,7 +24,7 @@ pip install TelegramGifts
 ```python
 from TelegramGifts import TelegramGifts
 
-# Initialize the library (auto-creates a smart cache)
+# Initialize the library (first run downloads the local assets cache)
 gifts = TelegramGifts()
 
 # Fetch comprehensive information about a gift by its ID or Name
@@ -42,7 +42,30 @@ print(f"Market Price: {info['prices']['tgmrkt_price_ton']} TON")
 | **Upgraded & Regular Gifts** | Complete data for both upgraded NFT-like models and regular Telegram gifts. |
 | **Market Prices** | Instant access to floor prices across Fragment, GetGems, and TGMrkt. |
 | **Custom Emojis & Backdrops** | Retrieve hidden custom emoji IDs and rarity metrics for specific models. |
-| **Asset Downloading** | Download high-quality WebP and TGS sticker animations locally with ease. |
+| **Local Asset Cache** | Download the assets repository once, then reuse WebP and TGS files locally. |
+
+## Cache Modes
+
+By default, `TelegramGifts()` clones the assets repository on first run and prints a message while the files are being downloaded. After that, JSON, WebP, and `.tgs` files are read from the local checkout when available, and updates use `git pull --ff-only`.
+
+```python
+from TelegramGifts import TelegramGifts
+
+# Recommended default: full local cache on first run
+gifts = TelegramGifts()
+
+# Optional: lightweight mode for JSON-only first run
+light_gifts = TelegramGifts(cache_mode="http", asset_mode="lazy")
+```
+
+Available options:
+
+- `cache_mode="git"`: default; maintain a local git checkout of the assets repo.
+- `cache_mode="http"`: optional; cache requested JSON files only.
+- `asset_mode="repo"`: default; return assets from the local repo when available.
+- `asset_mode="lazy"`: optional; do not download images/TGS until `download_*` is called.
+- `ttl_seconds`: controls JSON freshness and git pull interval by default.
+- `asset_repo_threshold=10`: applies only to lightweight HTTP/lazy mode; after 10 asset downloads, clone the assets repo locally to avoid many individual GitHub requests.
 
 ## Usage Examples
 
@@ -72,6 +95,8 @@ Automate the downloading of gift animations for bots or localized rendering.
 local_tgs_path = gifts.download_image("artisan_brick", ext="tgs")
 print(f"Saved asset to: {local_tgs_path}")
 ```
+
+Repeated downloads of the same asset return the cached local file instead of hitting GitHub again.
 
 ### 3. Retrieve All Gifts and Floor Prices
 Iterate over the entire catalog of available gifts seamlessly.

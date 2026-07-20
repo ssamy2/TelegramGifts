@@ -1,6 +1,6 @@
 # TelegramGifts Complete API Reference
 
-Welcome to the full documentation for `TelegramGifts`, your offline-first solution for fetching Telegram Gift data. This library requires no API keys, auto-updates from a GitHub database, and uses smart ETag caching to prevent rate limits.
+Welcome to the full documentation for `TelegramGifts`, a Python SDK for fetching Telegram Gift data. This library requires no API keys and keeps a local git-backed cache of JSON, WebP, and TGS assets by default.
 
 ---
 
@@ -15,13 +15,36 @@ gifts = TelegramGifts(
     repo_url="https://raw.githubusercontent.com/ssamy2/TelegramGiftsAssests/main",
     cache_dir="~/.telegramgifts_cache", # Optional: Specify a custom cache directory
     ttl_seconds=600,                    # Cache Time-To-Live in seconds (10 minutes default)
-    enable_cache=True                   # Set to False to force real-time network requests
+    enable_cache=True,                  # Set to False to force real-time network requests
+    cache_mode="git",                   # Default: keep a local repo checkout
+    asset_mode="repo",                  # Default: read assets from the local repo
+    git_pull_interval=None,             # Optional override; defaults to ttl_seconds
+    asset_min_interval_seconds=0.2,     # Gentle spacing between asset downloads
+    asset_repo_threshold=10             # Used only by lightweight HTTP/lazy mode
 )
 ```
 
 ---
 
-## 2. Comprehensive Gift Data
+## 2. Cache and Asset Loading
+
+The default cache is designed to avoid many individual GitHub asset requests:
+
+- On first run, the assets repository is cloned locally.
+- The library prints `TelegramGifts: Downloading gift files for the first time...` while the first download is starting.
+- JSON files, WebP images, and `.tgs` animations are read from the local repo when available.
+- Repo updates use `git pull --ff-only`.
+- `ttl_seconds` controls the default git pull interval.
+
+For users who want a lighter first run:
+
+```python
+gifts = TelegramGifts(cache_mode="http", asset_mode="lazy")
+```
+
+In lightweight mode, JSON files are cached over HTTP and assets are downloaded individually on demand. If `asset_repo_threshold` is greater than `0`, the cache promotes itself to a local repo-backed cache after that many network asset downloads.
+
+## 3. Comprehensive Gift Data
 
 ### `get_gift(identifier: str) -> Optional[dict]`
 The most powerful method. It dynamically resolves the identifier and returns a rich dictionary containing all details.
@@ -51,7 +74,7 @@ The most powerful method. It dynamically resolves the identifier and returns a r
 
 ---
 
-## 3. Models and Attributes (For Upgraded Gifts)
+## 4. Models and Attributes (For Upgraded Gifts)
 
 ### `get_model_details(identifier: str, model_name: Optional[str] = None) -> Union[list, dict, None]`
 Fetches intricate details for upgraded models, injecting real-time market prices and WebP/TGS links.
@@ -78,7 +101,7 @@ Query specific prices for underlying NFT attributes.
 
 ---
 
-## 4. Bulk Data Retrieval (Lists)
+## 5. Bulk Data Retrieval (Lists)
 
 These methods return lists of Python Dataclasses (`GiftDetail` and `RegularGift`).
 
@@ -131,7 +154,7 @@ Returns the raw parsed JSON list from `ss.json`.
 
 ---
 
-## 5. Market Prices
+## 6. Market Prices
 
 ### `get_upgraded_price(identifier: str, source: str = "tgmrkt") -> Optional[float]`
 Fetches the floor price for an upgraded gift from a specific marketplace.
@@ -143,7 +166,7 @@ Returns the standard floor price of an unupgraded gift.
 
 ---
 
-## 6. Image and Asset Management
+## 7. Image and Asset Management
 
 ### `get_image_url(identifier: str, ext: str = "webp") -> str`
 ### `get_image_url_by_id(gift_id: str, ext: str = "webp") -> str`
@@ -153,6 +176,8 @@ Returns the direct GitHub URL for the image or animation. Valid extensions: `"we
 Downloads the asset by name, caches it locally safely (using `.tmp` atomic writes to prevent corruption), and returns the **absolute local path**.
 **Returns:** `/home/user/.telegramgifts_cache/webp/artisan_brick.webp`
 
+Assets are repo-backed by default: the first run creates a local checkout, and future calls return local paths when the file is available. In lightweight `cache_mode="http", asset_mode="lazy"` mode, assets are downloaded on demand and cached individually.
+
 ### `download_image_by_id(gift_id: str, ext: str = "webp") -> str`
 Downloads the asset by its numeric ID and returns the absolute local path.
 
@@ -161,7 +186,7 @@ Downloads the specific variant asset for a model (e.g., `pro_gamer.webp` for `ar
 
 ---
 
-## 7. Data Structures (Types)
+## 8. Data Structures (Types)
 
 The library uses Dataclasses for structured data.
 
@@ -184,7 +209,7 @@ The library uses Dataclasses for structured data.
 
 ---
 
-## 8. Custom Exceptions
+## 9. Custom Exceptions
 
 Handle errors safely by importing from `TelegramGifts.exceptions`.
 
