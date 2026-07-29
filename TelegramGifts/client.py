@@ -1,3 +1,5 @@
+import threading
+import time
 from typing import List, Optional, Dict, Union, Any, Tuple
 from .cache import CacheManager
 from .types import GiftDetail, RegularGift
@@ -42,33 +44,64 @@ class TelegramGifts:
         self._regular_by_id: Dict[str, RegularGift] = {}
         self._regular_by_text: Dict[str, RegularGift] = {}
         self._detail_type_by_id: Dict[str, str] = {}
+        self._data_loaded_at: Optional[float] = None
+        self._data_lock = threading.RLock()
 
     def _load_data(self):
         """Loads and caches both main data files."""
-        if self._gifts_details is None:
-            self._gifts_details = self.cache.fetch_github_file(
-                f"{self.BASE_RAW_URL}/Gifts_Details.json", 
-                "Gifts_Details.json"
-            )
-            
-        if self._ss_data is None:
-            self._ss_data = self.cache.fetch_github_file(
-                f"{self.BASE_RAW_URL}/ss.json", 
-                "ss.json"
-            )
+        with self._data_lock:
+            current_time = time.time()
+            cache = getattr(self, "cache", None)
+            if (
+                self._data_loaded_at is not None
+                and getattr(cache, "enable_cache", False)
+                and (current_time - self._data_loaded_at)
+                >= getattr(cache, "ttl_seconds", 0)
+            ):
+                self._invalidate_loaded_data()
 
-        if self._aliases is None:
-            try:
-                aliases = self.cache.fetch_github_file(
-                    f"{self.BASE_RAW_URL}/{DEFAULT_ALIAS_MANIFEST}",
-                    DEFAULT_ALIAS_MANIFEST,
+            if self._gifts_details is None:
+                self._gifts_details = self.cache.fetch_github_file(
+                    f"{self.BASE_RAW_URL}/Gifts_Details.json",
+                    "Gifts_Details.json"
                 )
-                self._aliases = aliases if isinstance(aliases, dict) else {}
-            except Exception:
-                self._aliases = {}
 
-        if self._upgraded_gifts is None:
-            self._build_indexes()
+            if self._ss_data is None:
+                self._ss_data = self.cache.fetch_github_file(
+                    f"{self.BASE_RAW_URL}/ss.json",
+                    "ss.json"
+                )
+
+            if self._aliases is None:
+                try:
+                    aliases = self.cache.fetch_github_file(
+                        f"{self.BASE_RAW_URL}/{DEFAULT_ALIAS_MANIFEST}",
+                        DEFAULT_ALIAS_MANIFEST,
+                    )
+                    self._aliases = aliases if isinstance(aliases, dict) else {}
+                except Exception:
+                    self._aliases = {}
+
+            if self._upgraded_gifts is None:
+                self._build_indexes()
+
+            self._data_loaded_at = current_time
+
+    def _invalidate_loaded_data(self) -> None:
+        self._gifts_details = None
+        self._ss_data = None
+        self._aliases = None
+        self._upgraded_gifts = None
+        self._unupgraded_gifts = None
+        self._regular_gifts = None
+        self._detail_by_id = {}
+        self._detail_by_text = {}
+        self._details_by_id = {}
+        self._details_by_text = {}
+        self._regular_by_id = {}
+        self._regular_by_text = {}
+        self._detail_type_by_id = {}
+        self._data_loaded_at = None
 
     def _normalize_key(self, value: Any) -> str:
         return str(value).strip().lower()

@@ -34,7 +34,8 @@ The default cache is designed to avoid many individual GitHub asset requests:
 - The library prints `TelegramGifts: Downloading gift files for the first time...` while the first download is starting.
 - JSON files, WebP images, and `.tgs` animations are read from the local repo when available.
 - Repo updates use `git pull --ff-only`.
-- `ttl_seconds` controls the default git pull interval.
+- `ttl_seconds` controls the default git pull interval and automatically refreshes
+  in-memory gift data in long-running `TelegramGifts` instances.
 
 For users who want a lighter first run:
 

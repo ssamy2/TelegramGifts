@@ -5,6 +5,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from TelegramGifts.cache import CacheManager
+from TelegramGifts.client import TelegramGifts
 
 
 class DummyResponse:
@@ -146,6 +147,79 @@ class TestCacheBehavior(unittest.TestCase):
 
             commands = [call.args[0] for call in git_run.call_args_list]
             self.assertIn(["git", "-C", str(repo_dir), "pull", "--ff-only"], commands)
+
+    def test_long_lived_client_reloads_data_after_ttl(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_dir = Path(tmp) / "TelegramGiftsAssests"
+            repo_dir.mkdir()
+            details_file = repo_dir / "Gifts_Details.json"
+            details_file.write_text(
+                json.dumps(
+                    {
+                        "upgraded": [
+                            {
+                                "regular_id": "1",
+                                "short_name": "old_name",
+                                "full_name": "Old Name",
+                            }
+                        ],
+                        "unupgraded": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            (repo_dir / "ss.json").write_text("[]", encoding="utf-8")
+            (repo_dir / "Gift_Aliases.json").write_text("{}", encoding="utf-8")
+            (Path(tmp) / "meta.json").write_text(
+                json.dumps({"last_repo_pull": 100, "repo_has_assets": True}),
+                encoding="utf-8",
+            )
+            current_time = [100.0]
+
+            with patch(
+                "TelegramGifts.cache.time.time",
+                side_effect=lambda: current_time[0],
+            ), patch(
+                "TelegramGifts.client.time.time",
+                side_effect=lambda: current_time[0],
+            ), patch("TelegramGifts.cache.subprocess.run") as git_run:
+                gifts = TelegramGifts(cache_dir=tmp, ttl_seconds=300)
+                self.assertEqual(
+                    gifts.get_upgraded_gifts()[0].short_name,
+                    "old_name",
+                )
+
+                details_file.write_text(
+                    json.dumps(
+                        {
+                            "upgraded": [
+                                {
+                                    "regular_id": "1",
+                                    "short_name": "new_name",
+                                    "full_name": "New Name",
+                                }
+                            ],
+                            "unupgraded": [],
+                        }
+                    ),
+                    encoding="utf-8",
+                )
+                current_time[0] = 400.0
+
+                self.assertEqual(
+                    gifts.get_upgraded_gifts()[0].short_name,
+                    "new_name",
+                )
+
+            pull_commands = [
+                call.args[0]
+                for call in git_run.call_args_list
+                if "pull" in call.args[0]
+            ]
+            self.assertEqual(
+                pull_commands,
+                [["git", "-C", str(repo_dir), "pull", "--ff-only"]],
+            )
 
 
 if __name__ == "__main__":

@@ -202,7 +202,7 @@ class CacheManager:
                         raise CacheError(f"Failed to expand asset repository: {exc}")
                     return False
 
-        if (current_time - last_pull) > self.git_pull_interval:
+        if (current_time - last_pull) >= self.git_pull_interval:
             try:
                 subprocess.run(
                     ["git", "-C", str(self.repo_dir), "pull", "--ff-only"],

@@ -1,3 +1,4 @@
+import threading
 import unittest
 
 from TelegramGifts.client import TelegramGifts
@@ -45,6 +46,8 @@ def make_client():
     client._regular_by_id = {}
     client._regular_by_text = {}
     client._detail_type_by_id = {}
+    client._data_loaded_at = None
+    client._data_lock = threading.RLock()
     client._build_indexes()
     return client
 

@@ -84,7 +84,8 @@ Available options:
 - `cache_mode="http"`: optional; cache requested JSON files only.
 - `asset_mode="repo"`: default; return assets from the local repo when available.
 - `asset_mode="lazy"`: optional; do not download images/TGS until `download_*` is called.
-- `ttl_seconds`: controls JSON freshness and git pull interval by default.
+- `ttl_seconds`: controls JSON freshness and the git pull interval. Long-running
+  `TelegramGifts` instances automatically reload their in-memory data after the TTL.
 - `asset_repo_threshold=10`: applies only to lightweight HTTP/lazy mode; after 10 asset downloads, clone the assets repo locally to avoid many individual GitHub requests.
 
 ## Usage Examples
