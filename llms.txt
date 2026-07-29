@@ -18,8 +18,11 @@ Default cache behavior:
 
 ## Core Public Methods
 
-- `get_gift(identifier: str) -> Optional[dict]`
-  Returns a comprehensive dictionary with `id`, `full_name`, `type`, `supply`, `prices` (dict), `links` (dict of URLs), and `custom_emoji_id`. Identifier can be ID or short_name.
+- `get_gift(identifier: str, gift_type: str = "auto") -> Union[dict, list, None]`
+  Returns a comprehensive dictionary with `id`, `full_name`, `type`, `supply`, `prices` (dict), `links` (dict of URLs), and `custom_emoji_id`. Identifier can be ID, short_name, or full_name. When upgraded and regular gifts share the same name, the default `"auto"` mode preserves legacy behavior and prefers upgraded/unupgraded data. Use `gift_type="regular"` for the regular gift or `gift_type="both"` / `"all"` to return every matching entry.
+
+- `get_gift_matches(identifier: str) -> List[dict]`
+  Returns every matching entry for an identifier, with upgraded/unupgraded entries first and the regular gift last.
 
 - `get_model_details(identifier: str, model_name: Optional[str] = None) -> Union[list, dict, None]`
   Returns a dict (or list of dicts) with config details for upgraded gift models, including `price_ton`, `links`, and `custom_emoji_id`.

@@ -46,10 +46,20 @@ In lightweight mode, JSON files are cached over HTTP and assets are downloaded i
 
 ## 3. Comprehensive Gift Data
 
-### `get_gift(identifier: str) -> Optional[dict]`
+### `get_gift(identifier: str, gift_type: str = "auto") -> Union[dict, list, None]`
 The most powerful method. It dynamically resolves the identifier and returns a rich dictionary containing all details.
 **Arguments:**
 - `identifier`: The gift's ID (e.g., `"6005797617768858105"`), short name (e.g., `"artisan_brick"`), or full name (e.g., `"Artisan Brick"`).
+- `gift_type`: Optional lookup mode. Use `"auto"` (default) to preserve legacy behavior and prefer upgraded/unupgraded entries, `"upgraded"`, `"unupgraded"`, `"regular"`, `"both"`, or `"all"`.
+
+When a visible Telegram gift name exists in both upgraded and regular forms, `get_gift(identifier)` returns the upgraded/unupgraded entry first by default. This keeps existing model, custom emoji, and attribute lookups working. To retrieve both entries together, use:
+
+```python
+matches = gifts.get_gift("Khabib's Papakha", gift_type="both")
+# or
+matches = gifts.get_gift_matches("Khabib's Papakha")
+```
+
 **Returns:**
 ```python
 {
@@ -71,6 +81,9 @@ The most powerful method. It dynamically resolves the identifier and returns a r
     "custom_emoji_id": "5886603410492366880"
 }
 ```
+
+### `get_gift_matches(identifier: str) -> List[dict]`
+Returns every matching entry for an identifier as a list. Upgraded/unupgraded entries are returned first, followed by the regular gift when one exists.
 
 ---
 

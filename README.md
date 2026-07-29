@@ -27,7 +27,8 @@ from TelegramGifts import TelegramGifts
 # Initialize the library (first run downloads the local assets cache)
 gifts = TelegramGifts()
 
-# Fetch comprehensive information about a gift by its ID or Name
+# Fetch comprehensive information about a gift by its ID or Name.
+# If the same name exists as upgraded and regular, upgraded is returned by default.
 info = gifts.get_gift("Artisan Brick")
 
 print(f"Name: {info['full_name']}")
@@ -43,6 +44,25 @@ print(f"Market Price: {info['prices']['tgmrkt_price_ton']} TON")
 | **Market Prices** | Instant access to floor prices across Fragment, GetGems, and TGMrkt. |
 | **Custom Emojis & Backdrops** | Retrieve hidden custom emoji IDs and rarity metrics for specific models. |
 | **Local Asset Cache** | Download the assets repository once, then reuse WebP and TGS files locally. |
+
+## Shared Gift Names
+
+Some Telegram gifts can exist with the same visible name in both upgraded and regular forms, for example `"Khabib's Papakha"`. The default lookup stays backward-compatible and prefers the upgraded version, which keeps model, custom emoji, and attribute queries working as before.
+
+```python
+# Backward-compatible default: upgraded/unupgraded first, then regular
+gift = gifts.get_gift("Khabib's Papakha")
+
+# Request the regular gift explicitly
+regular = gifts.get_gift("Khabib's Papakha", gift_type="regular")
+
+# Return every matching entry together
+matches = gifts.get_gift("Khabib's Papakha", gift_type="both")
+# or
+matches = gifts.get_gift_matches("Khabib's Papakha")
+```
+
+Supported `gift_type` values are `"auto"` (default), `"upgraded"`, `"unupgraded"`, `"regular"`, `"both"`, and `"all"`.
 
 ## Cache Modes
 

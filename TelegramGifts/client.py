@@ -37,6 +37,8 @@ class TelegramGifts:
         self._regular_gifts: Optional[List[RegularGift]] = None
         self._detail_by_id: Dict[str, GiftDetail] = {}
         self._detail_by_text: Dict[str, GiftDetail] = {}
+        self._details_by_id: Dict[str, List[Tuple[str, GiftDetail]]] = {}
+        self._details_by_text: Dict[str, List[Tuple[str, GiftDetail]]] = {}
         self._regular_by_id: Dict[str, RegularGift] = {}
         self._regular_by_text: Dict[str, RegularGift] = {}
         self._detail_type_by_id: Dict[str, str] = {}
@@ -71,6 +73,25 @@ class TelegramGifts:
     def _normalize_key(self, value: Any) -> str:
         return str(value).strip().lower()
 
+    def _detail_priority(self, gift_type: str) -> int:
+        return {"UPGRADED": 0, "UNUPGRADED": 1}.get(gift_type, 99)
+
+    def _set_preferred_detail(
+        self,
+        index: Dict[str, GiftDetail],
+        key: str,
+        gift: GiftDetail,
+        gift_type: str,
+    ) -> None:
+        current = index.get(key)
+        if current is None:
+            index[key] = gift
+            return
+
+        current_type = self._detail_type_by_id.get(str(current.regular_id), "UNUPGRADED")
+        if self._detail_priority(gift_type) < self._detail_priority(current_type):
+            index[key] = gift
+
     def _build_indexes(self):
         upgraded_data = self._gifts_details.get("upgraded", []) if isinstance(self._gifts_details, dict) else []
         unupgraded_data = self._gifts_details.get("unupgraded", []) if isinstance(self._gifts_details, dict) else []
@@ -81,6 +102,8 @@ class TelegramGifts:
         self._regular_gifts = [RegularGift.from_dict(g) for g in regular_data]
         self._detail_by_id = {}
         self._detail_by_text = {}
+        self._details_by_id = {}
+        self._details_by_text = {}
         self._regular_by_id = {}
         self._regular_by_text = {}
         self._detail_type_by_id = {}
@@ -91,12 +114,17 @@ class TelegramGifts:
         ):
             for gift in gifts:
                 if gift.regular_id:
-                    self._detail_by_id[str(gift.regular_id)] = gift
-                    self._detail_type_by_id[str(gift.regular_id)] = gift_type
+                    id_key = str(gift.regular_id)
+                    current_type = self._detail_type_by_id.get(id_key)
+                    if current_type is None or self._detail_priority(gift_type) < self._detail_priority(current_type):
+                        self._detail_type_by_id[id_key] = gift_type
+                    self._details_by_id.setdefault(id_key, []).append((gift_type, gift))
+                    self._set_preferred_detail(self._detail_by_id, id_key, gift, gift_type)
                 for key in (gift.short_name, gift.full_name):
                     normalized = self._normalize_key(key)
                     if normalized:
-                        self._detail_by_text[normalized] = gift
+                        self._details_by_text.setdefault(normalized, []).append((gift_type, gift))
+                        self._set_preferred_detail(self._detail_by_text, normalized, gift, gift_type)
 
         for gift in self._regular_gifts:
             if gift.id:
@@ -169,66 +197,129 @@ class TelegramGifts:
                 
         return regular_gift, detail_gift
 
-    def get_gift(self, identifier: str) -> Optional[dict]:
-        """
-        Returns a comprehensive dictionary containing properties, prices, type, and download links for a gift.
-        Accepts the gift ID, short_name, or full_name.
-        """
-        regular, detail = self._find_raw_gift_data(identifier)
+    def _find_detail_matches(self, identifier: str) -> List[Tuple[str, GiftDetail]]:
+        candidates = self._candidate_identifiers(identifier)
+        matches: List[Tuple[str, GiftDetail]] = []
+        seen = set()
 
-        if not regular and not detail:
-            return None
+        for candidate in candidates:
+            identifier_str = self._normalize_key(candidate)
+            candidate_matches = []
+            candidate_matches.extend(self._details_by_id.get(str(candidate), []))
+            candidate_matches.extend(self._details_by_text.get(identifier_str, []))
 
-        gift_id = detail.regular_id if detail else (regular.id if regular else "")
-        
-        # Determine if it's in upgraded or unupgraded list
-        gift_type = "UNKNOWN"
-        if detail:
-            gift_type = self._detail_type_by_id.get(str(gift_id), "UNUPGRADED")
-        elif regular:
-            gift_type = "REGULAR"
+            for gift_type, gift in candidate_matches:
+                seen_key = (gift_type, gift.regular_id, gift.short_name)
+                if seen_key in seen:
+                    continue
+                seen.add(seen_key)
+                matches.append((gift_type, gift))
 
+        return sorted(matches, key=lambda item: self._detail_priority(item[0]))
+
+    def _format_detail_gift(
+        self,
+        detail: GiftDetail,
+        gift_type: str,
+        regular: Optional[RegularGift] = None,
+    ) -> dict:
         info = {
-            "id": gift_id,
-            "short_name": detail.short_name if detail else (regular.short_name if regular else ""),
-            "full_name": detail.full_name if detail else (regular.full_name if regular else ""),
+            "id": detail.regular_id,
+            "short_name": detail.short_name,
+            "full_name": detail.full_name,
             "type": gift_type,
         }
 
         if gift_type == "UPGRADED":
             info["supply"] = regular.supply if regular else None
             info["prices"] = {
-                "floor_price_ton": detail.prices.floor_price_ton if detail else None,
-                "portal_price_ton": detail.prices.portal_price_ton if detail else None,
-                "getgems_price_ton": detail.prices.getgems_price_ton if detail else None,
-                "tgmrkt_price_ton": detail.prices.tgmrkt_price_ton if detail else None,
+                "floor_price_ton": detail.prices.floor_price_ton,
+                "portal_price_ton": detail.prices.portal_price_ton,
+                "getgems_price_ton": detail.prices.getgems_price_ton,
+                "tgmrkt_price_ton": detail.prices.tgmrkt_price_ton,
             }
-            info["links"] = {
-                "webp": self.get_image_url_by_id(gift_id, "webp"),
-                "tgs": self.get_image_url_by_id(gift_id, "tgs")
-            }
-            if detail and detail.custom_emoji_id:
-                info["custom_emoji_id"] = detail.custom_emoji_id
-        elif gift_type == "UNUPGRADED":
+        else:
             info["prices"] = {
-                "floor_price_ton": detail.prices.floor_price_ton if detail else None
-            }
-            info["links"] = {
-                "webp": self.get_image_url_by_id(gift_id, "webp"),
-                "tgs": self.get_image_url_by_id(gift_id, "tgs")
-            }
-            if detail and detail.custom_emoji_id:
-                info["custom_emoji_id"] = detail.custom_emoji_id
-        elif gift_type == "REGULAR":
-            info["supply"] = regular.supply if regular else None
-            info["prices"] = {
-                "floor_price": float(regular.floor_price) if regular and regular.floor_price else None
-            }
-            info["links"] = {
-                "webp": self.get_image_url_by_id(gift_id, "webp")
+                "floor_price_ton": detail.prices.floor_price_ton
             }
 
+        info["links"] = {
+            "webp": self.get_image_url_by_id(detail.regular_id, "webp"),
+            "tgs": self.get_image_url_by_id(detail.regular_id, "tgs")
+        }
+        if detail.custom_emoji_id:
+            info["custom_emoji_id"] = detail.custom_emoji_id
+
         return info
+
+    def _format_regular_gift(self, regular: RegularGift) -> dict:
+        return {
+            "id": regular.id,
+            "short_name": regular.short_name,
+            "full_name": regular.full_name,
+            "type": "REGULAR",
+            "supply": regular.supply,
+            "prices": {
+                "floor_price": float(regular.floor_price) if regular.floor_price else None
+            },
+            "links": {
+                "webp": self.get_image_url_by_id(regular.id, "webp")
+            }
+        }
+
+    def get_gift_matches(self, identifier: str) -> List[dict]:
+        """
+        Returns every matching gift for a shared identifier.
+        Upgraded/unupgraded entries are returned first, followed by the regular gift.
+        """
+        regular, _ = self._find_raw_gift_data(identifier)
+        detail_matches = self._find_detail_matches(identifier)
+
+        matches = [
+            self._format_detail_gift(gift, gift_type, regular)
+            for gift_type, gift in detail_matches
+        ]
+        if regular:
+            matches.append(self._format_regular_gift(regular))
+        return matches
+
+    def get_gift(self, identifier: str, gift_type: str = "auto") -> Union[dict, List[dict], None]:
+        """
+        Returns a comprehensive dictionary containing properties, prices, type, and download links for a gift.
+        Accepts the gift ID, short_name, or full_name.
+
+        gift_type:
+        - "auto" (default): preserve legacy behavior and prefer upgraded/unupgraded data.
+        - "upgraded": return only upgraded data.
+        - "unupgraded": return only unupgraded data.
+        - "regular": return only regular data.
+        - "both" or "all": return every matching entry as a list.
+        """
+        requested_type = self._normalize_key(gift_type or "auto")
+        if requested_type in {"both", "all"}:
+            matches = self.get_gift_matches(identifier)
+            return matches or None
+
+        regular, detail = self._find_raw_gift_data(identifier)
+
+        if not regular and not detail:
+            return None
+
+        if requested_type == "regular":
+            return self._format_regular_gift(regular) if regular else None
+
+        if requested_type in {"upgraded", "unupgraded"}:
+            target_type = requested_type.upper()
+            for detail_type, detail_match in self._find_detail_matches(identifier):
+                if detail_type == target_type:
+                    return self._format_detail_gift(detail_match, detail_type, regular)
+            return None
+
+        if detail:
+            detail_type = self._detail_type_by_id.get(str(detail.regular_id), "UNUPGRADED")
+            return self._format_detail_gift(detail, detail_type, regular)
+
+        return self._format_regular_gift(regular) if regular else None
 
     # --- Prices ---
     def get_upgraded_price(self, identifier: str, source: str = "tgmrkt") -> Optional[float]:
